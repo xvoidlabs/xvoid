@@ -1,4 +1,4 @@
-# XVoid — Private Transaction Routing Network
+# XVoid Private Transaction Routing Network
 
 XVoid is an entirely off-chain, AI-assisted privacy relay built to obfuscate Solana transfers without modifying on-chain programs. Transactions are split into randomized fragments, routed through independent swarm nodes, relayed via temporary shadow wallets, padded with noise transfers, and scheduled with adaptive delays. All fragments are executed with standard System Program or SPL Token transfers issued by the nodes themselves.
 
