@@ -1,21 +1,51 @@
-FROM node:20-alpine AS builder
+FROM node:20-lts-alpine AS builder
 
 WORKDIR /app
-COPY . .
 
-RUN npm install
-RUN npm run build --workspace common && \
-    npm run build --workspace ai && \
-    npm run build --workspace coordinator && \
-    npm prune --omit=dev
+# Copy package files
+COPY package.json package-lock.json* ./
+COPY common/package.json ./common/
+COPY ai/package.json ./ai/
+COPY coordinator/package.json ./coordinator/
 
-FROM node:20-alpine
+# Install dependencies
+RUN npm ci
+
+# Copy source code
+COPY common ./common
+COPY ai ./ai
+COPY coordinator ./coordinator
+
+# Build
+RUN npm run build --workspace=common
+RUN npm run build --workspace=ai
+RUN npm run build --workspace=coordinator
+
+# Production stage
+FROM node:20-lts-alpine
+
 WORKDIR /app
 
-ENV NODE_ENV=production
+# Copy package files
+COPY package.json package-lock.json* ./
+COPY common/package.json ./common/
+COPY ai/package.json ./ai/
+COPY coordinator/package.json ./coordinator/
 
-COPY --from=builder /app /app
+# Install production dependencies only
+RUN npm ci --production
 
-EXPOSE 4000
-CMD ["node", "coordinator/dist/server.js"]
+# Copy built artifacts
+COPY --from=builder /app/common/dist ./common/dist
+COPY --from=builder /app/ai/dist ./ai/dist
+COPY --from=builder /app/coordinator/dist ./coordinator/dist
+COPY --from=builder /app/common/package.json ./common/
+COPY --from=builder /app/ai/package.json ./ai/
+COPY --from=builder /app/coordinator/package.json ./coordinator/
+
+WORKDIR /app/coordinator
+
+EXPOSE 3001
+
+CMD ["node", "dist/index.js"]
 

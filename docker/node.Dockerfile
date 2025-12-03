@@ -1,19 +1,43 @@
-FROM node:20-alpine AS builder
+FROM node:20-lts-alpine AS builder
 
 WORKDIR /app
-COPY . .
 
-RUN npm install
-RUN npm run build --workspace common && \
-    npm run build --workspace node && \
-    npm prune --omit=dev
+# Copy package files
+COPY package.json package-lock.json* ./
+COPY common/package.json ./common/
+COPY node/package.json ./node/
 
-FROM node:20-alpine
+# Install dependencies
+RUN npm ci
+
+# Copy source code
+COPY common ./common
+COPY node ./node
+
+# Build
+RUN npm run build --workspace=common
+RUN npm run build --workspace=node
+
+# Production stage
+FROM node:20-lts-alpine
+
 WORKDIR /app
 
-ENV NODE_ENV=production
+# Copy package files
+COPY package.json package-lock.json* ./
+COPY common/package.json ./common/
+COPY node/package.json ./node/
 
-COPY --from=builder /app /app
+# Install production dependencies only
+RUN npm ci --production
 
-CMD ["node", "node/dist/index.js"]
+# Copy built artifacts
+COPY --from=builder /app/common/dist ./common/dist
+COPY --from=builder /app/node/dist ./node/dist
+COPY --from=builder /app/common/package.json ./common/
+COPY --from=builder /app/node/package.json ./node/
+
+WORKDIR /app/node
+
+CMD ["node", "dist/index.js"]
 

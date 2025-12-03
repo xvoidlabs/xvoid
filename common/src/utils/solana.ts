@@ -5,135 +5,142 @@ import {
   SystemProgram,
   Transaction,
   sendAndConfirmTransaction,
-  Commitment
-} from '@solana/web3.js';
-import {
-  createTransferInstruction,
-  getOrCreateAssociatedTokenAccount
-} from '@solana/spl-token';
+  ParsedTransactionWithMeta,
+  ConfirmedSignatureInfo,
+} from "@solana/web3.js";
 
-export const createConnection = (
-  endpoint: string,
-  commitment: Commitment = 'confirmed'
-): Connection => new Connection(endpoint, { commitment });
-
-export const decodeSecretKey = (secret: string | Uint8Array): Uint8Array => {
-  if (secret instanceof Uint8Array) {
-    return secret;
-  }
-
-  const trimmed = secret.trim();
-
-  if (trimmed.startsWith('[')) {
-    return Uint8Array.from(JSON.parse(trimmed));
-  }
-
-  return new Uint8Array(Buffer.from(trimmed, 'base64'));
-};
-
-export const keypairFromSecret = (secret: string | Uint8Array): Keypair =>
-  Keypair.fromSecretKey(decodeSecretKey(secret));
-
-export interface SendSOLParams {
-  connection: Connection;
-  from: Keypair;
-  to: string;
-  amountLamports: number;
-  skipPreflight?: boolean;
-}
-
-export const sendSOL = async ({
-  connection,
-  from,
-  to,
-  amountLamports,
-  skipPreflight = false
-}: SendSOLParams): Promise<string> => {
+/**
+ * Create and send a SOL transfer using System Program
+ */
+export async function createAndSendSOLTransfer(
+  connection: Connection,
+  fromKeypair: Keypair,
+  toPubkey: string | PublicKey,
+  amountLamports: number
+): Promise<string> {
+  const toPublicKey = typeof toPubkey === "string" ? new PublicKey(toPubkey) : toPubkey;
+  
   const transaction = new Transaction().add(
     SystemProgram.transfer({
-      fromPubkey: from.publicKey,
-      toPubkey: new PublicKey(to),
-      lamports: amountLamports
+      fromPubkey: fromKeypair.publicKey,
+      toPubkey: toPublicKey,
+      lamports: amountLamports,
     })
   );
 
-  return sendAndConfirmTransaction(connection, transaction, [from], {
-    skipPreflight
-  });
-};
+  const signature = await sendAndConfirmTransaction(
+    connection,
+    transaction,
+    [fromKeypair],
+    {
+      commitment: "confirmed",
+    }
+  );
 
-export interface SendSPLParams {
-  connection: Connection;
-  from: Keypair;
-  mint: string;
-  to: string;
-  amount: bigint | number;
+  return signature;
 }
 
-export const sendSPL = async ({
-  connection,
-  from,
-  mint,
-  to,
-  amount
-}: SendSPLParams): Promise<string> => {
-  const mintKey = new PublicKey(mint);
-  const toKey = new PublicKey(to);
+/**
+ * Get a confirmed transaction by signature
+ */
+export async function getConfirmedTransaction(
+  connection: Connection,
+  signature: string
+): Promise<ParsedTransactionWithMeta | null> {
+  return await connection.getParsedTransaction(signature, {
+    commitment: "confirmed",
+  });
+}
 
-  const senderAccount = await getOrCreateAssociatedTokenAccount(
-    connection,
-    from,
-    mintKey,
-    from.publicKey
-  );
+/**
+ * Verify a transfer transaction
+ * Returns true if the transaction sends the expected amount from sender to recipient
+ */
+export async function verifyTransferTransaction(
+  connection: Connection,
+  signature: string,
+  expectedSender: string,
+  expectedRecipient: string,
+  expectedAmountLamports: number,
+  toleranceLamports: number = 1000 // Default 1000 lamports tolerance
+): Promise<boolean> {
+  try {
+    const tx = await getConfirmedTransaction(connection, signature);
+    
+    if (!tx || !tx.meta) {
+      return false;
+    }
 
-  const recipientAccount = await getOrCreateAssociatedTokenAccount(
-    connection,
-    from,
-    mintKey,
-    toKey
-  );
+    if (tx.meta.err) {
+      return false;
+    }
 
-  const transaction = new Transaction().add(
-    createTransferInstruction(
-      senderAccount.address,
-      recipientAccount.address,
-      from.publicKey,
-      typeof amount === 'bigint' ? amount : BigInt(amount)
-    )
-  );
+    const senderPubkey = new PublicKey(expectedSender);
+    const recipientPubkey = new PublicKey(expectedRecipient);
 
-  return sendAndConfirmTransaction(connection, transaction, [from]);
-};
+    // Check if transaction contains a transfer instruction
+    if (!tx.transaction.message.instructions) {
+      return false;
+    }
 
-export const getRecentBlockhash = async (
-  connection: Connection
-): Promise<string> => {
-  const { blockhash } = await connection.getLatestBlockhash();
-  return blockhash;
-};
+    let foundTransfer = false;
+    let actualAmount = 0;
 
-export const getTPS = async (
-  connection: Connection
-): Promise<number | null> => {
-  const samples = await connection.getRecentPerformanceSamples(5);
-  if (!samples.length) {
-    return null;
+    for (const instruction of tx.transaction.message.instructions) {
+      if ("programId" in instruction) {
+        const programId = instruction.programId;
+        
+        // Check if it's a System Program transfer
+        if (programId.equals(SystemProgram.programId)) {
+          if ("parsed" in instruction && instruction.parsed) {
+            const parsed = instruction.parsed;
+            
+            if (parsed.type === "transfer") {
+              const info = parsed.info;
+              
+              if (
+                info.source === expectedSender &&
+                info.destination === expectedRecipient
+              ) {
+                foundTransfer = true;
+                actualAmount = parseInt(info.lamports);
+                break;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    if (!foundTransfer) {
+      return false;
+    }
+
+    // Check amount within tolerance
+    const difference = Math.abs(actualAmount - expectedAmountLamports);
+    return difference <= toleranceLamports;
+  } catch (error) {
+    console.error("Error verifying transaction:", error);
+    return false;
   }
+}
 
-  const totalTransactions = samples.reduce(
-    (acc, sample) => acc + sample.numTransactions,
-    0
-  );
-  const totalSeconds = samples.reduce(
-    (acc, sample) => acc + sample.samplePeriodSecs,
-    0
-  );
+/**
+ * Get balance of a wallet
+ */
+export async function getBalance(
+  connection: Connection,
+  pubkey: string | PublicKey
+): Promise<number> {
+  const publicKey = typeof pubkey === "string" ? new PublicKey(pubkey) : pubkey;
+  return await connection.getBalance(publicKey, "confirmed");
+}
 
-  if (!totalSeconds) {
-    return null;
-  }
-
-  return totalTransactions / totalSeconds;
-};
+/**
+ * Generate a random Solana address (for noise transactions)
+ */
+export function generateRandomAddress(): string {
+  const keypair = Keypair.generate();
+  return keypair.publicKey.toBase58();
+}
 

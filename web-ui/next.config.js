@@ -1,9 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  swcMinify: true,
-  output: 'standalone'
-};
+  transpilePackages: ['@xvoid/common', '@xvoid/sdk'],
+}
 
-module.exports = nextConfig;
+module.exports = nextConfig
 

@@ -1,6 +1,8 @@
 {
-  "name": "xvoid",
+  "name": "xvoid-monorepo",
+  "version": "1.0.0",
   "private": true,
+  "description": "XVoid - Solana Privacy Routing Service",
   "workspaces": [
     "common",
     "ai",
@@ -11,8 +13,14 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces",
-    "lint": "npm run lint --workspaces",
-    "clean": "npm run clean --workspaces --if-present"
+    "dev:coordinator": "npm run dev --workspace=coordinator",
+    "dev:node": "npm run dev --workspace=node",
+    "dev:web-ui": "npm run dev --workspace=web-ui"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.3.3"
   }
 }
-

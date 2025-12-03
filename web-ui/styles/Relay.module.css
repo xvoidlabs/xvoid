@@ -1,0 +1,95 @@
+.container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+}
+
+.relayCard,
+.connectCard {
+  width: 100%;
+  max-width: 500px;
+}
+
+.relayCard h2,
+.connectCard h2 {
+  margin-bottom: 32px;
+  text-align: center;
+}
+
+.connectCard {
+  text-align: center;
+}
+
+.connectCard p {
+  color: var(--xv-text-soft);
+  margin-top: 16px;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.formGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.formGroup label {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--xv-text-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.segmentedControl {
+  display: flex;
+  gap: 8px;
+  background: #120E0D;
+  padding: 4px;
+  border-radius: 12px;
+  border: 1px solid var(--xv-border);
+}
+
+.segment {
+  flex: 1;
+  padding: 10px 16px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--xv-text-soft);
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.segment:hover:not(:disabled) {
+  background: var(--xv-bg-soft);
+  color: var(--xv-text);
+}
+
+.segmentActive {
+  background: var(--xv-primary);
+  color: #0C0C0C;
+}
+
+.segment:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.error {
+  padding: 12px 16px;
+  background: rgba(242, 97, 63, 0.1);
+  border: 1px solid var(--xv-primary-soft);
+  border-radius: 12px;
+  color: var(--xv-primary);
+  font-size: 14px;
+}
+

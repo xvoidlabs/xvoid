@@ -1,153 +1,288 @@
-import axios, { AxiosInstance } from 'axios';
-import PQueue from 'p-queue';
-import { FragmentTask, generateShadowWallet } from '@xvoid/common';
-import { config } from './config';
-import { logger } from './logger';
-import { SolanaExecutor } from './solanaExecutor';
-
-const sleep = (ms: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, ms));
+import axios, { AxiosInstance } from "axios";
+import { Connection, Keypair, PublicKey } from "@solana/web3.js";
+import { FragmentTask } from "@xvoid/common";
+import {
+  createAndSendSOLTransfer,
+  generateRandomAddress,
+  generateShadowWallet,
+  secretKeyFromBase58,
+  secretKeyFromJson,
+} from "@xvoid/common";
 
 export class NodeAgent {
-  private readonly http: AxiosInstance;
-  private readonly queue: PQueue;
-  private heartbeatTimer?: NodeJS.Timeout;
-  private readonly executor: SolanaExecutor;
+  private nodeId: string;
+  private coordinatorUrl: string;
+  private capacity: number;
+  private httpClient: AxiosInstance;
+  private connection: Connection;
+  private hotWallet: Keypair;
+  private heartbeatInterval?: NodeJS.Timeout;
+  private pollingInterval?: NodeJS.Timeout;
+  private isRunning: boolean = false;
 
-  constructor(
-    private readonly cfg = config,
-    executor?: SolanaExecutor
-  ) {
-    this.http = axios.create({
-      baseURL: cfg.coordinatorUrl,
-      timeout: cfg.requestTimeout
+  constructor(nodeId: string, coordinatorUrl: string, capacity: number) {
+    this.nodeId = nodeId;
+    this.coordinatorUrl = coordinatorUrl;
+    this.capacity = capacity;
+    this.httpClient = axios.create({
+      baseURL: coordinatorUrl,
+      timeout: 30000,
     });
-    this.queue = new PQueue({ concurrency: cfg.capacity });
-    this.executor =
-      executor ??
-      new SolanaExecutor({
-        rpcUrl: cfg.rpcUrl,
-        secretKey: cfg.hotWalletSecret || undefined,
-        simulate: cfg.simulateTransfers
-      });
+
+    const RPC_URL = process.env.XVOID_SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
+    this.connection = new Connection(RPC_URL, "confirmed");
+
+    // Load hot wallet
+    const secretKeyEnv = process.env.XVOID_NODE_HOT_WALLET_SECRET_KEY;
+    if (!secretKeyEnv) {
+      throw new Error("XVOID_NODE_HOT_WALLET_SECRET_KEY environment variable is required");
+    }
+
+    try {
+      // Try parsing as JSON array first
+      const jsonArray = JSON.parse(secretKeyEnv);
+      if (Array.isArray(jsonArray)) {
+        const secretKey = secretKeyFromJson(jsonArray);
+        this.hotWallet = Keypair.fromSecretKey(secretKey);
+      } else {
+        throw new Error("Invalid JSON array format");
+      }
+    } catch {
+      // Not JSON, try as base58 string
+      try {
+        const secretKey = secretKeyFromBase58(secretKeyEnv);
+        this.hotWallet = Keypair.fromSecretKey(secretKey);
+      } catch (error) {
+        throw new Error(`Failed to parse hot wallet secret key: ${error}`);
+      }
+    }
+
+    console.log(`Hot wallet loaded: ${this.hotWallet.publicKey.toBase58()}`);
   }
 
   async start(): Promise<void> {
+    if (this.isRunning) {
+      return;
+    }
+
+    this.isRunning = true;
+
+    // Register with coordinator
     await this.register();
+
+    // Start heartbeat
     this.startHeartbeat();
-    await this.pollLoop();
+
+    // Start task polling
+    this.startPolling();
+
+    console.log("Node agent started successfully");
+  }
+
+  stop(): void {
+    this.isRunning = false;
+
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+    }
+
+    if (this.pollingInterval) {
+      clearInterval(this.pollingInterval);
+    }
+
+    console.log("Node agent stopped");
   }
 
   private async register(): Promise<void> {
-    logger.info(
-      {
-        nodeId: this.cfg.nodeId,
-        endpoint: this.cfg.endpoint,
-        capacity: this.cfg.capacity
-      },
-      'Registering node'
-    );
-
-    await this.http.post('/nodes/register', {
-      nodeId: this.cfg.nodeId,
-      capacity: this.cfg.capacity,
-      endpoint: this.cfg.endpoint
-    });
+    try {
+      await this.httpClient.post("/nodes/register", {
+        nodeId: this.nodeId,
+        capacity: this.capacity,
+      });
+      console.log("Registered with coordinator");
+    } catch (error: any) {
+      console.error("Failed to register:", error.message);
+      throw error;
+    }
   }
 
   private startHeartbeat(): void {
-    this.heartbeatTimer = setInterval(() => {
-      this.http
-        .post('/nodes/heartbeat', { nodeId: this.cfg.nodeId })
-        .catch((err) =>
-          logger.warn({ err }, 'Heartbeat failed')
-        );
-    }, this.cfg.heartbeatInterval);
+    // Send heartbeat every 30 seconds
+    this.heartbeatInterval = setInterval(async () => {
+      try {
+        await this.httpClient.post("/nodes/heartbeat", {
+          nodeId: this.nodeId,
+        });
+      } catch (error: any) {
+        console.error("Heartbeat failed:", error.message);
+      }
+    }, 30000);
+
+    // Send initial heartbeat
+    this.httpClient.post("/nodes/heartbeat", {
+      nodeId: this.nodeId,
+    }).catch((error: any) => {
+      console.error("Initial heartbeat failed:", error.message);
+    });
   }
 
-  private async pollLoop(): Promise<void> {
-    while (true) {
+  private startPolling(): void {
+    // Poll for tasks every 5 seconds
+    this.pollingInterval = setInterval(async () => {
+      if (!this.isRunning) {
+        return;
+      }
+
       try {
-        const { data } = await this.http.get('/tasks/next', {
-          params: { nodeId: this.cfg.nodeId }
+        const response = await this.httpClient.get("/tasks/next", {
+          params: { nodeId: this.nodeId },
         });
 
-        if (!data || data.task === null) {
-          await sleep(this.cfg.pollInterval);
-          continue;
+        const task: FragmentTask | null = response.data;
+
+        if (task) {
+          // Process task asynchronously
+          this.processTask(task).catch((error) => {
+            console.error(`Error processing task ${task.id}:`, error);
+          });
         }
-
-        const fragment: FragmentTask = data;
-        this.queue.add(() => this.processFragment(fragment)).catch((err) =>
-          logger.error({ err, fragmentId: fragment.fragmentId }, 'Worker failed')
-        );
-      } catch (error) {
-        logger.error({ err: error }, 'Polling loop error');
-        await sleep(this.cfg.pollInterval);
+      } catch (error: any) {
+        console.error("Error polling for tasks:", error.message);
       }
-    }
+    }, 5000);
   }
 
-  private async processFragment(fragment: FragmentTask): Promise<void> {
-    logger.info(
-      { fragmentId: fragment.fragmentId, trackingId: fragment.trackingId },
-      'Processing fragment'
-    );
-
-    await sleep(fragment.delayMs);
-
-    const shadowWallets = Array.from({ length: fragment.shadowWalletCount }, () =>
-      generateShadowWallet()
-    );
+  private async processTask(task: FragmentTask): Promise<void> {
+    console.log(`Processing fragment task ${task.id} for intent ${task.intentId}`);
 
     try {
-      for (let i = 0; i < fragment.noiseTxCount; i += 1) {
-        const wallet =
-          shadowWallets[i % (shadowWallets.length || 1)] ?? generateShadowWallet();
-        await this.executor.sendNoiseTransfer(wallet.publicKey);
+      // Wait for delay
+      if (task.delayMs > 0) {
+        console.log(`Waiting ${task.delayMs}ms before executing fragment`);
+        await this.sleep(task.delayMs);
       }
 
-      const signature = await this.executor.sendFragment(fragment);
-      await this.report(fragment, 'completed', signature);
-      logger.info(
-        { fragmentId: fragment.fragmentId, signature },
-        'Fragment completed'
-      );
-    } catch (error) {
-      logger.error({ err: error, fragmentId: fragment.fragmentId }, 'Fragment failed');
-      await this.report(fragment, 'failed', null, error as Error);
-    }
-  }
+      // Execute fragment routing
+      const txSignature = await this.executeFragment(task);
 
-  private async report(
-    fragment: FragmentTask,
-    status: 'completed' | 'failed',
-    signature: string | null,
-    error?: Error
-  ): Promise<void> {
-    try {
-      await this.http.post('/tasks/report', {
-        nodeId: this.cfg.nodeId,
-        trackingId: fragment.trackingId,
-        fragmentId: fragment.fragmentId,
-        status,
-        signature,
-        error: error?.message
+      // Report success
+      await this.httpClient.post("/tasks/report", {
+        nodeId: this.nodeId,
+        fragmentId: task.id,
+        intentId: task.intentId,
+        status: "completed",
+        txSignature,
       });
-    } catch (reportError) {
-      logger.error(
-        { err: reportError, fragmentId: fragment.fragmentId },
-        'Failed to report fragment'
-      );
+
+      console.log(`Fragment ${task.id} completed with tx ${txSignature}`);
+    } catch (error: any) {
+      console.error(`Fragment ${task.id} failed:`, error.message);
+
+      // Report failure
+      try {
+        await this.httpClient.post("/tasks/report", {
+          nodeId: this.nodeId,
+          fragmentId: task.id,
+          intentId: task.intentId,
+          status: "failed",
+        });
+      } catch (reportError: any) {
+        console.error(`Failed to report task failure:`, reportError.message);
+      }
     }
   }
 
-  async shutdown(): Promise<void> {
-    if (this.heartbeatTimer) {
-      clearInterval(this.heartbeatTimer);
+  private async executeFragment(task: FragmentTask): Promise<string> {
+    const recipientPubkey = new PublicKey(task.recipient);
+    let currentAmount = task.amountLamports;
+    let lastTxSignature: string | null = null;
+
+    // Create shadow wallet hops if needed
+    if (task.shadowWalletCount > 0) {
+      const shadowWallets: Array<{ publicKey: string; secretKey: Uint8Array }> = [];
+
+      for (let i = 0; i < task.shadowWalletCount; i++) {
+        const shadow = generateShadowWallet();
+        shadowWallets.push(shadow);
+      }
+
+      // Route through shadow wallets
+      let fromKeypair = this.hotWallet;
+      let toPubkey: PublicKey;
+
+      for (let i = 0; i < shadowWallets.length; i++) {
+        const shadow = shadowWallets[i];
+        toPubkey = new PublicKey(shadow.publicKey);
+
+        // Send to shadow wallet
+        const shadowKeypair = Keypair.fromSecretKey(shadow.secretKey);
+        const txSig = await createAndSendSOLTransfer(
+          this.connection,
+          fromKeypair,
+          toPubkey.toBase58(),
+          currentAmount
+        );
+
+        lastTxSignature = txSig;
+        console.log(`Sent ${currentAmount} lamports to shadow wallet ${shadow.publicKey}`);
+
+        // Wait a bit between hops
+        await this.sleep(1000);
+
+        fromKeypair = shadowKeypair;
+      }
+
+      // Final transfer to recipient
+      const finalTxSig = await createAndSendSOLTransfer(
+        this.connection,
+        fromKeypair,
+        recipientPubkey.toBase58(),
+        currentAmount
+      );
+
+      lastTxSignature = finalTxSig;
+    } else {
+      // Direct transfer to recipient
+      const txSig = await createAndSendSOLTransfer(
+        this.connection,
+        this.hotWallet,
+        recipientPubkey.toBase58(),
+        currentAmount
+      );
+
+      lastTxSignature = txSig;
     }
-    await this.queue.onIdle();
-    logger.info('Node agent stopped');
+
+    // Send noise transactions if needed
+    if (task.noiseTxCount > 0) {
+      for (let i = 0; i < task.noiseTxCount; i++) {
+        const noiseAmount = Math.floor(Math.random() * 1000) + 100; // 100-1100 lamports
+        const noiseRecipient = generateRandomAddress();
+
+        try {
+          await createAndSendSOLTransfer(
+            this.connection,
+            this.hotWallet,
+            noiseRecipient,
+            noiseAmount
+          );
+          console.log(`Sent noise transaction: ${noiseAmount} lamports to ${noiseRecipient}`);
+        } catch (error) {
+          console.error("Failed to send noise transaction:", error);
+          // Continue even if noise fails
+        }
+      }
+    }
+
+    if (!lastTxSignature) {
+      throw new Error("No transaction signature generated");
+    }
+
+    return lastTxSignature;
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
 

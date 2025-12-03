@@ -1,0 +1,142 @@
+.container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+}
+
+.container .card {
+  width: 100%;
+  max-width: 700px;
+}
+
+.container h2 {
+  margin-bottom: 32px;
+}
+
+.statusSection {
+  margin-bottom: 32px;
+}
+
+.statusBadge {
+  display: inline-block;
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.statusBadge[data-status="awaiting_deposit"] {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--xv-text-soft);
+}
+
+.statusBadge[data-status="deposit_confirmed"] {
+  background: rgba(155, 57, 34, 0.2);
+  color: var(--xv-primary-soft);
+}
+
+.statusBadge[data-status="routing"] {
+  background: rgba(242, 97, 63, 0.2);
+  color: var(--xv-primary);
+}
+
+.statusBadge[data-status="completed"] {
+  background: rgba(0, 255, 0, 0.1);
+  color: #00ff00;
+}
+
+.statusBadge[data-status="failed"] {
+  background: rgba(255, 0, 0, 0.1);
+  color: #ff0000;
+}
+
+.infoGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 24px;
+  margin-bottom: 32px;
+}
+
+.infoItem {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.infoItem label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--xv-text-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.infoItem .value {
+  font-size: 14px;
+  color: var(--xv-text);
+  word-break: break-all;
+}
+
+.link {
+  color: var(--xv-primary);
+  text-decoration: underline;
+  transition: color 0.2s ease;
+}
+
+.link:hover {
+  color: var(--xv-primary-soft);
+}
+
+.progressSection {
+  margin-top: 32px;
+  padding-top: 32px;
+  border-top: 1px solid var(--xv-border);
+}
+
+.progressSection h3 {
+  margin-bottom: 16px;
+  font-size: 18px;
+}
+
+.progressBar {
+  width: 100%;
+  height: 8px;
+  background: #120E0D;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--xv-primary);
+  transition: width 0.3s ease;
+}
+
+.progressStats {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+  font-size: 14px;
+  color: var(--xv-text-soft);
+}
+
+.progressStats .failed {
+  color: #ff0000;
+}
+
+.loading,
+.error {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--xv-text-soft);
+}
+
+.error {
+  color: var(--xv-primary);
+}
+

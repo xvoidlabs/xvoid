@@ -1,102 +1,105 @@
-import axios, { AxiosInstance } from 'axios';
-import { PrivacyLevel, TaskStatus } from '@xvoid/common';
-import { z } from 'zod';
+import axios, { AxiosInstance } from "axios";
+import {
+  CreateIntentRequest,
+  CreateIntentResponse,
+  RouteIntentStatus,
+  PrivacyLevel,
+} from "@xvoid/common";
 
-export interface XVoidClientOptions {
+export interface XVoidClientConfig {
   baseUrl: string;
-  timeoutMs?: number;
-  retries?: number;
-  retryDelayMs?: number;
-  apiKey?: string;
+  timeout?: number;
 }
-
-export interface SendRequest {
-  recipient: string;
-  amount: number;
-  privacy: PrivacyLevel;
-}
-
-const submitResponseSchema = z.object({
-  trackingId: z.string()
-});
-
-const statusResponseSchema = z.object({
-  trackingId: z.string(),
-  totalFragments: z.number(),
-  completed: z.number(),
-  pending: z.number(),
-  failed: z.number()
-});
-
-const sleep = (ms: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, ms));
 
 export class XVoidClient {
-  private readonly http: AxiosInstance;
-  private readonly retries: number;
-  private readonly retryDelay: number;
+  private httpClient: AxiosInstance;
 
-  constructor(private readonly options: XVoidClientOptions) {
-    if (!options.baseUrl) {
-      throw new Error('XVoidClient requires a baseUrl');
-    }
-
-    this.http = axios.create({
-      baseURL: options.baseUrl.replace(/\/$/, ''),
-      timeout: options.timeoutMs ?? 10_000,
-      headers: options.apiKey ? { 'x-api-key': options.apiKey } : undefined
+  constructor(config: XVoidClientConfig) {
+    this.httpClient = axios.create({
+      baseURL: config.baseUrl,
+      timeout: config.timeout || 30000,
+      headers: {
+        "Content-Type": "application/json",
+      },
     });
-
-    this.retries = options.retries ?? 3;
-    this.retryDelay = options.retryDelayMs ?? 500;
   }
 
-  async send(request: SendRequest): Promise<{ trackingId: string }> {
-    const bodySchema = z.object({
-      recipient: z.string().min(32),
-      amount: z.number().positive(),
-      privacy: z.enum(['low', 'medium', 'high'])
-    });
-    const payload = bodySchema.parse(request);
+  /**
+   * Create a new route intent
+   */
+  async createIntent(params: {
+    recipient: string;
+    amountSol: number;
+    privacyLevel: PrivacyLevel;
+    senderPubkey: string;
+  }): Promise<CreateIntentResponse> {
+    try {
+      const request: CreateIntentRequest = {
+        recipient: params.recipient,
+        amountSol: params.amountSol,
+        privacyLevel: params.privacyLevel,
+        senderPubkey: params.senderPubkey,
+      };
 
-    const response = await this.requestWithRetry(() =>
-      this.http.post('/submit', {
-        recipient: payload.recipient,
-        amount: payload.amount,
-        privacyLevel: payload.privacy
-      })
-    );
+      const response = await this.httpClient.post<CreateIntentResponse>(
+        "/intents",
+        request
+      );
 
-    return submitResponseSchema.parse(response.data);
-  }
-
-  async getStatus(trackingId: string): Promise<TaskStatus> {
-    if (!trackingId) {
-      throw new Error('trackingId is required');
+      return response.data;
+    } catch (error: any) {
+      if (error.response) {
+        throw new Error(
+          error.response.data?.error || `HTTP ${error.response.status}: ${error.response.statusText}`
+        );
+      } else if (error.request) {
+        throw new Error("Network error: No response from coordinator");
+      } else {
+        throw new Error(`Request error: ${error.message}`);
+      }
     }
-
-    const response = await this.requestWithRetry(() =>
-      this.http.get(`/tasks/${trackingId}/status`)
-    );
-
-    return statusResponseSchema.parse(response.data);
   }
 
-  private async requestWithRetry<T>(operation: () => Promise<T>): Promise<T> {
-    let attempt = 0;
-    let delay = this.retryDelay;
+  /**
+   * Confirm an intent after deposit transaction
+   */
+  async confirmIntent(intentId: string, txSignature: string): Promise<void> {
+    try {
+      await this.httpClient.post(`/intents/${intentId}/confirm`, {
+        txSignature,
+      });
+    } catch (error: any) {
+      if (error.response) {
+        throw new Error(
+          error.response.data?.error || `HTTP ${error.response.status}: ${error.response.statusText}`
+        );
+      } else if (error.request) {
+        throw new Error("Network error: No response from coordinator");
+      } else {
+        throw new Error(`Request error: ${error.message}`);
+      }
+    }
+  }
 
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
-      try {
-        return await operation();
-      } catch (error) {
-        attempt += 1;
-        if (attempt > this.retries) {
-          throw error;
-        }
-        await sleep(delay);
-        delay *= 2;
+  /**
+   * Get the status of a route intent
+   */
+  async getStatus(intentId: string): Promise<RouteIntentStatus> {
+    try {
+      const response = await this.httpClient.get<RouteIntentStatus>(
+        `/intents/${intentId}/status`
+      );
+
+      return response.data;
+    } catch (error: any) {
+      if (error.response) {
+        throw new Error(
+          error.response.data?.error || `HTTP ${error.response.status}: ${error.response.statusText}`
+        );
+      } else if (error.request) {
+        throw new Error("Network error: No response from coordinator");
+      } else {
+        throw new Error(`Request error: ${error.message}`);
       }
     }
   }

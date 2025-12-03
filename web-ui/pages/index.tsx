@@ -1,78 +1,124 @@
-import Head from 'next/head';
-import Link from 'next/link';
-import { useState } from 'react';
-import { TransferForm } from '../components/TransferForm';
+import { useRouter } from 'next/router';
+import styles from '../styles/Home.module.css';
 
-const HomePage = () => {
-  const [trackingId, setTrackingId] = useState<string | null>(null);
+export default function Home() {
+  const router = useRouter();
 
   return (
-    <div className="app-shell">
-      <Head>
-        <title>XVoid Privacy Relay</title>
-      </Head>
-
-      <main
-        style={{
-          flex: 1,
-          maxWidth: 720,
-          width: '100%',
-          margin: '0 auto',
-          padding: '4rem 1.5rem'
-        }}
-      >
-        <div className="hero">
-          <p
-            style={{
-              textTransform: 'uppercase',
-              letterSpacing: '0.25em',
-              color: 'var(--text-secondary)',
-              fontSize: '0.85rem'
-            }}
-          >
-            AI-Assisted Privacy Relay
+    <div className={styles.container}>
+      {/* Hero Section */}
+      <section className={styles.hero}>
+        <div className={styles.heroContent}>
+          <h1>Coordinated privacy routing for Solana transfers</h1>
+          <p className={styles.heroSubtext}>
+            XVoid fragments your SOL transfers across a swarm of nodes using shadow wallets,
+            adaptive delays, and optional noise transactions. Break the on-chain link between
+            your entry transfer and the recipient&apos;s receipt.
           </p>
-          <h1 style={{ fontSize: '2.8rem', marginBottom: '0.5rem' }}>
-            XVoid Transaction Sharder
-          </h1>
-          <p style={{ color: 'var(--text-secondary)', margin: 0 }}>
-            Submit a Solana transfer and the coordinator will split, delay, and
-            reroute fragments through anonymous swarm nodes.
-          </p>
+          <div className={styles.heroButtons}>
+            <button className="btn-primary" onClick={() => router.push('/relay')}>
+              Enter Relay
+            </button>
+            <button className="btn-secondary" onClick={() => router.push('#how-it-works')}>
+              How it Works
+            </button>
+          </div>
         </div>
+      </section>
 
-        <div className="card">
-          <TransferForm onResult={setTrackingId} />
-        </div>
-
-        {trackingId && (
-          <div className="card" style={{ marginTop: '1.5rem' }}>
-            <h3>Tracking ID</h3>
-            <p className="helper-text">
-              Monitor fragment progress in real time.
-            </p>
-            <code
-              style={{
-                display: 'inline-block',
-                margin: '1rem 0',
-                padding: '0.75rem 1rem',
-                borderRadius: 8,
-                background: 'var(--surface-accent)'
-              }}
-            >
-              {trackingId}
-            </code>
-            <div>
-              <Link href={`/status/${trackingId}`} className="button">
-                View Status Dashboard
-              </Link>
+      {/* Capabilities Section */}
+      <section className={styles.capabilities}>
+        <div className="container">
+          <h2 className={styles.sectionTitle}>Privacy Routing Capabilities</h2>
+          <div className={styles.capabilityGrid}>
+            <div className="card">
+              <h3>Transaction Fragmentation</h3>
+              <p>
+                Your transfer is split into multiple fragments of varying sizes,
+                routed through different nodes at different times.
+              </p>
+            </div>
+            <div className="card">
+              <h3>Shadow Wallets</h3>
+              <p>
+                Intermediate hops use temporary shadow wallets to obscure the
+                routing path between entry and exit.
+              </p>
+            </div>
+            <div className="card">
+              <h3>Swarm Routing</h3>
+              <p>
+                Multiple independent nodes execute fragments in parallel,
+                distributing trust and reducing correlation risk.
+              </p>
+            </div>
+            <div className="card">
+              <h3>Adaptive Delay & Noise</h3>
+              <p>
+                Configurable delays and optional noise transactions mask timing
+                patterns and transaction volumes.
+              </p>
             </div>
           </div>
-        )}
-      </main>
+        </div>
+      </section>
+
+      {/* How It Works Section */}
+      <section id="how-it-works" className={styles.howItWorks}>
+        <div className="container">
+          <h2 className={styles.sectionTitle}>How It Works</h2>
+          <div className={styles.steps}>
+            <div className={styles.step}>
+              <div className={styles.stepNumber}>1</div>
+              <h3>User Signs Entry Transfer</h3>
+              <p>
+                Connect your wallet and sign a single System Program transfer
+                to the XVoid entry wallet. This is your only on-chain signature.
+              </p>
+            </div>
+            <div className={styles.step}>
+              <div className={styles.stepNumber}>2</div>
+              <h3>Coordinator Confirms & Plans</h3>
+              <p>
+                The coordinator verifies your deposit and creates a fragmentation
+                plan based on your selected privacy level.
+              </p>
+            </div>
+            <div className={styles.step}>
+              <div className={styles.stepNumber}>3</div>
+              <h3>Nodes Execute Fragments</h3>
+              <p>
+                Swarm nodes execute fragment transfers via shadow wallets with
+                configured delays and optional noise transactions.
+              </p>
+            </div>
+            <div className={styles.step}>
+              <div className={styles.stepNumber}>4</div>
+              <h3>Recipient Receives Transfers</h3>
+              <p>
+                The recipient receives multiple dispersed transfers, breaking
+                the on-chain link to your original entry transfer.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* CTA Section */}
+      <section className={styles.cta}>
+        <div className="container">
+          <div className="card" style={{ textAlign: 'center', maxWidth: '600px', margin: '0 auto' }}>
+            <h2>Ready to Route Privately?</h2>
+            <p style={{ marginTop: '16px', marginBottom: '32px' }}>
+              Enter the relay console to create your first private route.
+            </p>
+            <button className="btn-primary" onClick={() => router.push('/relay')}>
+              Enter Relay Console
+            </button>
+          </div>
+        </div>
+      </section>
     </div>
   );
-};
-
-export default HomePage;
+}
 
