@@ -1,0 +1,59 @@
+version: "3.9"
+
+services:
+  coordinator:
+    build:
+      context: .
+      dockerfile: docker/coordinator.Dockerfile
+    environment:
+      COORDINATOR_PORT: 4000
+      XVOID_SOLANA_RPC_URL: ${XVOID_SOLANA_RPC_URL:-https://api.mainnet-beta.solana.com}
+      LOG_LEVEL: info
+    ports:
+      - "4000:4000"
+    restart: unless-stopped
+
+  node_a:
+    build:
+      context: .
+      dockerfile: docker/node.Dockerfile
+    depends_on:
+      - coordinator
+    environment:
+      XVOID_NODE_ID: node-a
+      XVOID_COORDINATOR_URL: http://coordinator:4000
+      XVOID_SOLANA_RPC_URL: ${XVOID_SOLANA_RPC_URL:-https://api.mainnet-beta.solana.com}
+      XVOID_NODE_ENDPOINT: http://node-a
+      XVOID_NODE_CAPACITY: 4
+      XVOID_HOT_WALLET_SECRET_KEY: ${XVOID_HOT_WALLET_SECRET_KEY:-}
+      XVOID_SIMULATE_TRANSFERS: ${XVOID_SIMULATE_TRANSFERS:-true}
+    restart: unless-stopped
+
+  node_b:
+    build:
+      context: .
+      dockerfile: docker/node.Dockerfile
+    depends_on:
+      - coordinator
+    environment:
+      XVOID_NODE_ID: node-b
+      XVOID_COORDINATOR_URL: http://coordinator:4000
+      XVOID_SOLANA_RPC_URL: ${XVOID_SOLANA_RPC_URL:-https://api.mainnet-beta.solana.com}
+      XVOID_NODE_ENDPOINT: http://node-b
+      XVOID_NODE_CAPACITY: 4
+      XVOID_HOT_WALLET_SECRET_KEY: ${XVOID_NODE_B_SECRET_KEY:-}
+      XVOID_SIMULATE_TRANSFERS: ${XVOID_SIMULATE_TRANSFERS:-true}
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/web-ui.Dockerfile
+    depends_on:
+      - coordinator
+    environment:
+      NEXT_PUBLIC_COORDINATOR_URL: http://coordinator:4000
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+

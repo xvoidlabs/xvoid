@@ -1,0 +1,18 @@
+{
+  "name": "xvoid",
+  "private": true,
+  "workspaces": [
+    "common",
+    "ai",
+    "coordinator",
+    "node",
+    "sdk",
+    "web-ui"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "lint": "npm run lint --workspaces",
+    "clean": "npm run clean --workspaces --if-present"
+  }
+}
+
