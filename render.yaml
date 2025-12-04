@@ -1,0 +1,48 @@
+services:
+  # XVoid Coordinator Service
+  - type: web
+    name: xvoid-coordinator
+    runtime: node
+    plan: free
+    rootDir: .
+    buildCommand: |
+      npm install
+      npm run build --workspace=common
+      npm run build --workspace=ai
+      npm run build --workspace=coordinator
+    startCommand: cd coordinator && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: SOLANA_RPC_URL
+        sync: false
+      - key: XVOID_ENTRY_WALLET_SECRET_KEY
+        sync: false
+
+  # XVoid Node Service (Background Worker)
+  - type: worker
+    name: xvoid-node-1
+    runtime: node
+    plan: free
+    rootDir: .
+    buildCommand: |
+      npm install
+      npm run build --workspace=common
+      npm run build --workspace=node
+    startCommand: cd node && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: XVOID_NODE_ID
+        value: node-1
+      - key: XVOID_COORDINATOR_URL
+        sync: false
+      - key: XVOID_SOLANA_RPC_URL
+        sync: false
+      - key: XVOID_NODE_HOT_WALLET_SECRET_KEY
+        sync: false
+      - key: XVOID_NODE_CAPACITY
+        value: "10"
+
