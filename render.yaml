@@ -6,7 +6,8 @@ services:
     plan: free
     rootDir: .
     buildCommand: |
-      NODE_ENV=development npm install
+      npm install
+      npm install --workspace=coordinator --save-dev @types/express @types/cors @types/node typescript
       npm run build --workspace=common
       npm run build --workspace=ai
       npm run build --workspace=coordinator
@@ -28,7 +29,8 @@ services:
     plan: free
     rootDir: .
     buildCommand: |
-      NODE_ENV=development npm install
+      npm install
+      npm install --workspace=node --save-dev @types/node typescript
       npm run build --workspace=common
       npm run build --workspace=node
     startCommand: cd node && npm start
