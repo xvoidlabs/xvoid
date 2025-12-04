@@ -43,3 +43,6 @@ Thumbs.db
 # Docker
 .dockerignore
 
+# Deployment archives
+*.tar.gz
+
