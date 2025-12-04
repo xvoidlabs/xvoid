@@ -6,7 +6,7 @@ services:
     plan: free
     rootDir: .
     buildCommand: |
-      npm install --include=dev
+      NODE_ENV=development npm install
       npm run build --workspace=common
       npm run build --workspace=ai
       npm run build --workspace=coordinator
@@ -28,7 +28,7 @@ services:
     plan: free
     rootDir: .
     buildCommand: |
-      npm install --include=dev
+      NODE_ENV=development npm install
       npm run build --workspace=common
       npm run build --workspace=node
     startCommand: cd node && npm start
